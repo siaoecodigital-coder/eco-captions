@@ -298,7 +298,7 @@ def run_render(job_id: str, options: dict):
 
 # ─── FastAPI ───────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Legendário IA")
+app = FastAPI(title="ECO Captions")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -399,7 +399,7 @@ def download(job_id: str):
     path = job.get("final_path")
     if not path or not Path(path).exists():
         raise HTTPException(404, "Arquivo não encontrado")
-    return FileResponse(path, media_type="video/mp4", filename=f"legendario_{job_id}.mp4",
+    return FileResponse(path, media_type="video/mp4", filename=f"eco-captions_{job_id}.mp4",
                         headers={"Cache-Control": "no-store"})
 
 

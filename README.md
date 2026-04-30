@@ -1,12 +1,12 @@
-# 🎬 Legendário IA — Documentação do Sistema
+# 🎬 ECO Captions — Documentação do Sistema
 
-Bem-vindo à documentação oficial do **Legendário IA**. Este arquivo descreve a arquitetura, lógica de negócios, fluxo de dados e estrutura da aplicação de ponta a ponta.
+Bem-vindo à documentação oficial do **ECO Captions**. Este arquivo descreve a arquitetura, lógica de negócios, fluxo de dados e estrutura da aplicação de ponta a ponta.
 
 ---
 
 ## 🎯 Visão Geral
 
-O **Legendário IA** é uma aplicação web que transcreve vídeos automaticamente usando o Google Gemini e gera legendas estilo Reels gravadas diretamente no vídeo, com total controle de estilo pelo operador.
+O **ECO Captions** é uma aplicação web que transcreve vídeos automaticamente usando o Google Gemini e gera legendas estilo Reels gravadas diretamente no vídeo, com total controle de estilo pelo operador.
 
 **Fluxo principal:** Upload → Transcrição (Gemini) → Corte de silêncios (FFmpeg) → Edição da transcrição → Personalização → Vídeo com legenda gravada
 
@@ -179,7 +179,7 @@ O projeto está configurado para deploy automático no Railway:
 GEMINI_KEY=sua_chave_aqui
 ```
 
-**URL de produção:** https://legendario-ia-production.up.railway.app
+**URL de produção:** https://eco-captions-production.up.railway.app
 
 ---
 
@@ -192,4 +192,4 @@ GEMINI_KEY=sua_chave_aqui
 
 ---
 
-*Documentação mantida para o sistema Legendário IA — Eco Digital*
+*Documentação mantida para o sistema ECO Captions — Eco Digital*
