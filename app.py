@@ -79,26 +79,28 @@ def extract_audio(video_path: str, out_dir: Path) -> str:
 
 
 def transcribe_audio(audio_path: str) -> list:
-    import google.generativeai as genai
-    import re, time, sys, traceback
+    from google import genai
+    import re, sys, traceback
 
-    genai.configure(api_key=os.getenv("GEMINI_KEY"))
+    client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
 
     with open(audio_path, "rb") as f:
         audio_bytes = f.read()
 
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
         prompt = (
             "Transcreva este áudio em português do Brasil. "
             "Retorne SOMENTE JSON válido, sem markdown, sem explicações:\n"
             '{"segments":[{"start":0.0,"end":3.2,"text":"..."},...]}\n'
             "Regras: start/end em segundos (float), 5 a 15 palavras por segmento, cubra todo o áudio sem lacunas."
         )
-        response = model.generate_content([
-            {"mime_type": "audio/wav", "data": audio_bytes},
-            prompt,
-        ])
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                {"mime_type": "audio/wav", "data": audio_bytes},
+                prompt,
+            ],
+        )
 
         text = response.text.strip()
         text = re.sub(r"^```(?:json)?\s*", "", text)
