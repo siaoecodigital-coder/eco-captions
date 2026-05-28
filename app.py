@@ -84,12 +84,8 @@ def transcribe_audio(audio_path: str) -> list:
 
     genai.configure(api_key=os.getenv("GEMINI_KEY"))
 
-    uploaded = genai.upload_file(path=audio_path, mime_type="audio/wav")
-    for _ in range(30):
-        f = genai.get_file(uploaded.name)
-        if f.state.name != "PROCESSING":
-            break
-        time.sleep(2)
+    with open(audio_path, "rb") as f:
+        audio_bytes = f.read()
 
     model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = (
@@ -98,12 +94,10 @@ def transcribe_audio(audio_path: str) -> list:
         '{"segments":[{"start":0.0,"end":3.2,"text":"..."},...]}\n'
         "Regras: start/end em segundos (float), 5 a 15 palavras por segmento, cubra todo o áudio sem lacunas."
     )
-    response = model.generate_content([uploaded, prompt])
-
-    try:
-        genai.delete_file(uploaded.name)
-    except Exception:
-        pass
+    response = model.generate_content([
+        {"mime_type": "audio/wav", "data": audio_bytes},
+        prompt,
+    ])
 
     text = response.text.strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
