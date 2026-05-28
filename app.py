@@ -97,7 +97,7 @@ def transcribe_audio(audio_path: str) -> list:
         audio_part = genai.types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
         text_part = genai.types.Part.from_text(text=prompt)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash",
             contents=[audio_part, text_part],
         )
 
