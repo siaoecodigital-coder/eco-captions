@@ -80,34 +80,39 @@ def extract_audio(video_path: str, out_dir: Path) -> str:
 
 def transcribe_audio(audio_path: str) -> list:
     import google.generativeai as genai
-    import re, time
+    import re, time, sys, traceback
 
     genai.configure(api_key=os.getenv("GEMINI_KEY"))
 
     with open(audio_path, "rb") as f:
         audio_bytes = f.read()
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    prompt = (
-        "Transcreva este áudio em português do Brasil. "
-        "Retorne SOMENTE JSON válido, sem markdown, sem explicações:\n"
-        '{"segments":[{"start":0.0,"end":3.2,"text":"..."},...]}\n'
-        "Regras: start/end em segundos (float), 5 a 15 palavras por segmento, cubra todo o áudio sem lacunas."
-    )
-    response = model.generate_content([
-        {"mime_type": "audio/wav", "data": audio_bytes},
-        prompt,
-    ])
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        prompt = (
+            "Transcreva este áudio em português do Brasil. "
+            "Retorne SOMENTE JSON válido, sem markdown, sem explicações:\n"
+            '{"segments":[{"start":0.0,"end":3.2,"text":"..."},...]}\n'
+            "Regras: start/end em segundos (float), 5 a 15 palavras por segmento, cubra todo o áudio sem lacunas."
+        )
+        response = model.generate_content([
+            {"mime_type": "audio/wav", "data": audio_bytes},
+            prompt,
+        ])
 
-    text = response.text.strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
+        text = response.text.strip()
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
 
-    data = json.loads(text)
-    return [
-        {"index": i, "start": float(s["start"]), "end": float(s["end"]), "text": s["text"].strip()}
-        for i, s in enumerate(data.get("segments", []))
-    ]
+        data = json.loads(text)
+        return [
+            {"index": i, "start": float(s["start"]), "end": float(s["end"]), "text": s["text"].strip()}
+            for i, s in enumerate(data.get("segments", []))
+        ]
+    except Exception as e:
+        print(f"ERRO TRANSCRIÇÃO: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        raise
 
 
 def find_speech_intervals(segments: list, min_gap=0.5, padding=0.05) -> list:
@@ -399,4 +404,4 @@ def download(job_id: str):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False, log_level="info", access_log=True)
