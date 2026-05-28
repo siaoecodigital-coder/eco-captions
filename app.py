@@ -94,12 +94,11 @@ def transcribe_audio(audio_path: str) -> list:
             '{"segments":[{"start":0.0,"end":3.2,"text":"..."},...]}\n'
             "Regras: start/end em segundos (float), 5 a 15 palavras por segmento, cubra todo o áudio sem lacunas."
         )
+        audio_part = genai.types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
+        text_part = genai.types.Part.from_text(text=prompt)
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=[
-                {"mime_type": "audio/wav", "data": audio_bytes},
-                prompt,
-            ],
+            contents=[audio_part, text_part],
         )
 
         text = response.text.strip()
