@@ -232,7 +232,7 @@ def build_ass(entries: list, width: int, height: int, options: dict, tarja_optio
             t_border_style = 3
             t_back_color = hex_to_ass(t_bg)
             t_outline_color = hex_to_ass(t_bg)
-            t_outline_size = 0
+            t_outline_size = 4
 
         t_font = t.get("font", "Arial")
 
