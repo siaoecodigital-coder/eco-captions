@@ -36,6 +36,12 @@ POSITION_MAP = {
     "baixo":  (2, 80),
 }
 
+TARJA_POSITION_MAP = {
+    "topo":   (8, 20),
+    "centro": (5, 0),
+    "baixo":  (2, 20),
+}
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -192,7 +198,7 @@ def segments_to_word_entries(segments: list, chunk_size: int = 3) -> list:
     return entries
 
 
-def build_ass(entries: list, width: int, height: int, options: dict) -> str:
+def build_ass(entries: list, width: int, height: int, options: dict, tarja_options: dict = None, video_duration: float = None) -> str:
     is_vertical = height > width
     size_key = options.get("size", "grande")
     size_v, size_h = SIZE_MAP.get(size_key, SIZE_MAP["grande"])
@@ -205,6 +211,37 @@ def build_ass(entries: list, width: int, height: int, options: dict) -> str:
     primary = hex_to_ass(options.get("color", "#ffffff"))
     outline = hex_to_ass(options.get("outline", "#000000"))
 
+    styles = f"Style: Default,{font},{font_size},{primary},&H000000FF,{outline},&H00000000,-1,0,0,0,100,100,0,0,1,4,0,{alignment},20,20,{margin_v},1\n"
+
+    tarja_event = ""
+
+    if tarja_options and tarja_options.get("text", "").strip():
+        t = tarja_options
+        t_size_v, t_size_h = SIZE_MAP.get(t.get("size", "medio"), SIZE_MAP["medio"])
+        t_font_size = t_size_v if is_vertical else t_size_h
+        t_align, t_margin = TARJA_POSITION_MAP.get(t.get("position", "topo"), TARJA_POSITION_MAP["topo"])
+        t_primary = hex_to_ass(t.get("color", "#ffffff"))
+        t_bg = t.get("bg", "#000000")
+
+        if t_bg.lower() == "transparent":
+            t_border_style = 1
+            t_back_color = "&H00000000"
+            t_outline_color = hex_to_ass("#000000")
+            t_outline_size = 3
+        else:
+            t_border_style = 3
+            t_back_color = hex_to_ass(t_bg)
+            t_outline_color = hex_to_ass(t_bg)
+            t_outline_size = 0
+
+        t_font = t.get("font", "Arial")
+
+        styles += f"Style: Tarja,{t_font},{t_font_size},{t_primary},&H000000FF,{t_outline_color},{t_back_color},-1,0,0,0,100,100,0,0,{t_border_style},{t_outline_size},0,{t_align},20,20,{t_margin},1\n"
+
+        dur = video_duration or 9999
+        t_an_tag = "{\\an" + str(t_align) + "}"
+        tarja_event = f"Dialogue: 1,{ass_time(0)},{ass_time(dur)},Tarja,,0,0,0,,{t_an_tag}{t['text'].strip()}\n"
+
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -213,8 +250,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font},{font_size},{primary},&H000000FF,{outline},&H00000000,-1,0,0,0,100,100,0,0,1,4,0,{alignment},20,20,{margin_v},1
-
+""" + styles + """
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
@@ -224,18 +260,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         for e in entries
         if e.get("text", "").strip()
     )
-    return header + events + "\n"
+    return header + tarja_event + events + "\n"
 
 
 def render_video(cut_video: str, segments: list, out_dir: Path, options: dict) -> str:
     output_path = str(out_dir / "final.mp4")
     info = get_video_info(cut_video)
     w, h = info["width"], info["height"]
+    duration = info["duration"]
 
     chunk_size = int(options.get("chunk", 3))
     entries = segments_to_word_entries(segments, chunk_size=chunk_size)
 
-    ass_content = build_ass(entries, w, h, options)
+    tarja_opts = {
+        "text": options.get("tarja_text"),
+        "color": options.get("tarja_color", "#ffffff"),
+        "bg": options.get("tarja_bg", "#000000"),
+        "font": options.get("tarja_font", "Arial"),
+        "size": options.get("tarja_size", "medio"),
+        "position": options.get("tarja_position", "topo"),
+    }
+
+    ass_content = build_ass(
+        entries, w, h, options,
+        tarja_options=tarja_opts if tarja_opts["text"] and str(tarja_opts["text"]).strip() else None,
+        video_duration=duration
+    )
     ass_path = out_dir / "subs.ass"
     ass_path.write_text(ass_content, encoding="utf-8")
 
@@ -370,6 +420,12 @@ class RenderRequest(BaseModel):
     size: Optional[str] = "grande"
     position: Optional[str] = "baixo"
     chunk: Optional[int] = 3
+    tarja_text: Optional[str] = None
+    tarja_color: Optional[str] = "#ffffff"
+    tarja_bg: Optional[str] = "#000000"
+    tarja_font: Optional[str] = "Arial"
+    tarja_size: Optional[str] = "medio"
+    tarja_position: Optional[str] = "topo"
 
 
 @app.post("/render/{job_id}")

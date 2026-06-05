@@ -112,6 +112,31 @@
     .success p { color: #4caf50; margin-bottom: 22px; font-size: 0.95rem; }
 
     .hidden { display: none !important; }
+
+    /* Tarja */
+    .tarja-card { background: #161625; border-radius: 14px; padding: 24px; margin-bottom: 20px; border-left: 3px solid #e94560; }
+    .tarja-card .section-title { color: #e94560; }
+    .tarja-input {
+      width: 100%; background: #1e1e35; border: 1px solid #2a2a45; border-radius: 8px;
+      color: #ddd; font-size: 0.88rem; padding: 10px 12px; outline: none;
+      font-family: inherit; resize: vertical; min-height: 44px;
+    }
+    .tarja-input:focus { border-color: #e94560; }
+    .tarja-switch-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background: #2a2a45; border-radius: 24px; transition: 0.2s;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background: #777; border-radius: 50%; transition: 0.2s;
+    }
+    input:checked + .slider { background: #e94560; }
+    input:checked + .slider:before { transform: translateX(20px); background: #fff; }
+    .tarja-opts { display: none; }
+    .tarja-opts.visible { display: block; }
   </style>
 </head>
 <body>
@@ -234,6 +259,78 @@
       </div>
     </div>
 
+    <!-- Tarjas Fixas -->
+    <div class="tarja-card" id="sec-tarja">
+      <div class="tarja-switch-row">
+        <div class="section-title" style="margin-bottom:0;flex:1">🏷️ Tarja Fixa</div>
+        <label class="switch">
+          <input type="checkbox" id="tarja-enabled" onchange="toggleTarja()">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="section-hint">Texto fixo que aparece durante todo o vídeo (ex: "OFERTA IMPERDÍVEL").</div>
+
+      <div class="tarja-opts" id="tarja-opts">
+        <div class="custom-grid">
+          <div class="custom-field" style="grid-column: 1 / -1">
+            <label>Texto da Tarja</label>
+            <input class="tarja-input" id="tarja-text" placeholder="Digite o texto da tarja..." maxlength="120">
+          </div>
+
+          <div class="custom-field">
+            <label>Cor do Texto</label>
+            <div class="color-row">
+              <input type="color" id="tarja-color-text" value="#ffffff" oninput="syncHex('tarja-color-text','tarja-hex-text')">
+              <input class="color-hex" id="tarja-hex-text" value="#ffffff" maxlength="7" oninput="syncPicker('tarja-hex-text','tarja-color-text')">
+            </div>
+          </div>
+
+          <div class="custom-field">
+            <label>Cor do Fundo</label>
+            <div class="color-row">
+              <input type="color" id="tarja-color-bg" value="#000000" oninput="syncHex('tarja-color-bg','tarja-hex-bg')">
+              <input class="color-hex" id="tarja-hex-bg" value="#000000" maxlength="7" oninput="syncPicker('tarja-hex-bg','tarja-color-bg')">
+            </div>
+            <label style="margin-top:6px; display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.78rem; color:#888;">
+              <input type="checkbox" id="tarja-bg-none" onchange="updateBgLabel()"> Sem fundo (transparente)
+            </label>
+          </div>
+
+          <div class="custom-field">
+            <label>Fonte</label>
+            <select class="select-styled" id="tarja-sel-font">
+              <option value="Liberation Sans">Arial (Liberation Sans)</option>
+              <option value="Montserrat">Montserrat</option>
+              <option value="Oswald">Impact (Oswald)</option>
+              <option value="Lato">Calibri (Lato)</option>
+              <option value="Open Sans">Open Sans</option>
+              <option value="Liberation Serif">Serif (Liberation)</option>
+              <option value="Liberation Mono">Mono (Liberation)</option>
+            </select>
+          </div>
+
+          <div class="custom-field">
+            <label>Tamanho</label>
+            <div class="toggle-group" id="tg-tarja-size">
+              <button class="toggle-btn" data-val="pequeno" onclick="pick('tg-tarja-size',this)">P</button>
+              <button class="toggle-btn active" data-val="medio" onclick="pick('tg-tarja-size',this)">M</button>
+              <button class="toggle-btn" data-val="grande" onclick="pick('tg-tarja-size',this)">G</button>
+              <button class="toggle-btn" data-val="extra" onclick="pick('tg-tarja-size',this)">XG</button>
+            </div>
+          </div>
+
+          <div class="custom-field">
+            <label>Posição</label>
+            <div class="toggle-group" id="tg-tarja-pos">
+              <button class="toggle-btn active" data-val="topo" onclick="pick('tg-tarja-pos',this)">Topo</button>
+              <button class="toggle-btn" data-val="centro" onclick="pick('tg-tarja-pos',this)">Centro</button>
+              <button class="toggle-btn" data-val="baixo" onclick="pick('tg-tarja-pos',this)">Baixo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="row">
       <button class="btn btn-reels btn-block" onclick="renderVideo()">🎬 Gerar Vídeo com Legenda</button>
     </div>
@@ -304,6 +401,7 @@
 
   function getOptions() {
     const active = (id) => document.querySelector(`#${id} .toggle-btn.active`)?.dataset.val;
+    const tarjaEnabled = document.getElementById('tarja-enabled').checked;
     return {
       color:   document.getElementById('hex-text').value   || '#ffffff',
       outline: document.getElementById('hex-outline').value || '#000000',
@@ -311,7 +409,24 @@
       size:    active('tg-size')  || 'grande',
       position: active('tg-pos') || 'baixo',
       chunk:   parseInt(active('tg-chunk') || '3'),
+      tarja_text: tarjaEnabled ? (document.getElementById('tarja-text').value || '') : null,
+      tarja_color: document.getElementById('tarja-hex-text').value || '#ffffff',
+      tarja_bg: document.getElementById('tarja-bg-none').checked ? 'transparent' : (document.getElementById('tarja-hex-bg').value || '#000000'),
+      tarja_font: document.getElementById('tarja-sel-font').value || 'Arial',
+      tarja_size: active('tg-tarja-size') || 'medio',
+      tarja_position: active('tg-tarja-pos') || 'topo',
     };
+  }
+
+  function toggleTarja() {
+    const enabled = document.getElementById('tarja-enabled').checked;
+    document.getElementById('tarja-opts').classList.toggle('visible', enabled);
+  }
+
+  function updateBgLabel() {
+    const noBg = document.getElementById('tarja-bg-none').checked;
+    document.getElementById('tarja-color-bg').disabled = noBg;
+    document.getElementById('tarja-hex-bg').disabled = noBg;
   }
 
   async function startProcess() {
