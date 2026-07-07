@@ -549,6 +549,9 @@ SUPPORTED_INSTAGRAM_PATTERNS = [
     r"/p/",              # Posts (carrossel, imagem única, vídeo)
 ]
 
+INSTAGRAM_USER = os.getenv("INSTAGRAM_USER", "").strip()
+INSTAGRAM_PASS = os.getenv("INSTAGRAM_PASS", "").strip()
+
 
 def is_instagram_supported(url: str) -> bool:
     """Verifica se a URL é um tipo suportado do Instagram."""
@@ -559,21 +562,129 @@ def clean_instagram_url(url: str) -> str:
     return re.sub(r"[?&]igsh=.*", "", url).rstrip("/")
 
 
+def extract_shortcode(url: str) -> str:
+    """Extrai o shortcode da URL do Instagram. Ex: /reel/DaB6DpFpmds/ → DaB6DpFpmds"""
+    m = re.search(r"/(?:reel|stories?|p)/([^/?]+)", url, re.I)
+    if not m:
+        raise HTTPException(400, "Não foi possível extrair o identificador do conteúdo da URL.")
+    return m.group(1)
+
+
+def download_with_instaloader(shortcode: str, out_dir: Path, is_story: bool = False) -> dict:
+    """Baixa mídia do Instagram usando instaloader autenticado. Retorna {path, media_type}."""
+    from instaloader import Instaloader, Post, Story, Profile
+
+    L = Instaloader(
+        download_pictures=True,
+        download_videos=True,
+        download_video_thumbnails=False,
+        save_metadata=False,
+        post_metadata_txt_pattern="",
+    )
+
+    # Login
+    try:
+        L.login(INSTAGRAM_USER, INSTAGRAM_PASS)
+    except Exception as e:
+        raise HTTPException(500, f"Falha na autenticação do Instagram: {str(e)}")
+
+    try:
+        if is_story:
+            # Stories: shortcode é o username, baixamos os stories ativos
+            profile = Profile.from_username(L.context, shortcode)
+            stories_ok = 0
+            media_path = None
+            for story in L.get_stories(userids=[profile.userid]):
+                for item in story.get_items():
+                    if item.is_video:
+                        L.download_storyitem(item, str(out_dir))
+                        stories_ok += 1
+                        if not media_path:
+                            # Encontra o arquivo baixado
+                            videos = list(out_dir.glob("*.mp4")) + list(out_dir.glob("*.mkv")) + list(out_dir.glob("*.webm"))
+                            if videos:
+                                media_path = str(videos[0])
+                    else:
+                        L.download_storyitem(item, str(out_dir))
+                        stories_ok += 1
+                        if not media_path:
+                            images = list(out_dir.glob("*.jpg")) + list(out_dir.glob("*.png"))
+                            if images:
+                                media_path = str(images[0])
+
+            if not media_path:
+                raise HTTPException(400, f"Nenhum story ativo encontrado para @{shortcode}.")
+
+            # Detecta tipo
+            ext = Path(media_path).suffix.lower()
+            media_type = "video" if ext in (".mp4", ".mkv", ".webm") else "image"
+            return {"path": media_path, "media_type": media_type}
+
+        else:
+            # Posts e Reels
+            post = Post.from_shortcode(L.context, shortcode)
+            L.download_post(post, target=str(out_dir))
+
+            # Encontra arquivo baixado
+            videos = list(out_dir.glob("*.mp4")) + list(out_dir.glob("*.mkv")) + list(out_dir.glob("*.webm"))
+            images = list(out_dir.glob("*.jpg")) + list(out_dir.glob("*.jpeg")) + list(out_dir.glob("*.png"))
+
+            if videos:
+                return {"path": str(videos[0]), "media_type": "video"}
+            elif images:
+                return {"path": str(images[0]), "media_type": "image"}
+            else:
+                raise HTTPException(400, "Download concluído mas nenhum arquivo encontrado.")
+
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao baixar do Instagram: {str(e)}")
+
+
 class InstagramURL(BaseModel):
     url: str
 
 
 @app.post("/instagram-extract")
 def instagram_extract(body: InstagramURL):
-    """Baixa mídia do Instagram (Reels, Stories, Posts/Carrosséis) via yt-dlp."""
+    """Baixa mídia do Instagram (Reels, Stories, Posts/Carrosséis)."""
     cleaned = clean_instagram_url(body.url)
 
     if not is_instagram_supported(cleaned):
         raise HTTPException(400, "URL não suportada. Aceitamos Reels (/reel/), Stories (/stories/) e Posts/Carrosséis (/p/) públicos.")
 
+    is_story = "/stories/" in cleaned.lower() or "/story/" in cleaned.lower()
+    shortcode = extract_shortcode(cleaned)
+
     job_id = str(uuid.uuid4())[:8]
     out_dir = UPLOAD_DIR / job_id
     out_dir.mkdir(parents=True)
+
+    # Estratégia 1: instaloader (se credenciais configuradas)
+    if INSTAGRAM_USER and INSTAGRAM_PASS:
+        try:
+            result = download_with_instaloader(shortcode, out_dir, is_story)
+            media_path = result["path"]
+            media_type = result["media_type"]
+
+            jobs[job_id] = {
+                "status": "uploaded", "step": 0,
+                "message": f"Mídia do Instagram baixada ({media_type})",
+                "progress": 0, "video_path": media_path, "out_dir": str(out_dir),
+                "source": "instagram", "media_type": media_type
+            }
+
+            return {
+                "job_id": job_id,
+                "filename": Path(media_path).name,
+                "media_type": media_type
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            # Fallback para yt-dlp
+            pass
+
+    # Estratégia 2: yt-dlp (fallback)
     output_template = str(out_dir / "%(title)s.%(ext)s")
 
     cmd = [
@@ -583,11 +694,8 @@ def instagram_extract(body: InstagramURL):
         "--merge-output-format", "mp4",
         "--no-playlist",
         "--socket-timeout", "30",
-        "--extract-audio",  # fallback: extrai áudio se não puder baixar vídeo
-        "--audio-format", "mp3",
     ]
 
-    # Injeta cookies se disponíveis (para burlar bloqueio do Instagram)
     if INSTAGRAM_COOKIES:
         cookie_file = out_dir / "cookies.txt"
         cookie_file.write_text(INSTAGRAM_COOKIES, encoding="utf-8")
@@ -600,23 +708,20 @@ def instagram_extract(body: InstagramURL):
 
         if result.returncode != 0:
             stderr = result.stderr[-800:]
-            # Dá dicas mais específicas
             if "empty media response" in stderr.lower() or "not granting access" in stderr.lower():
-                hint = "\n\nDica: Se este conteúdo exige login, configure a variável INSTAGRAM_COOKIES no Railway com os cookies do seu navegador."
+                hint = "\n\nDica: Configure INSTAGRAM_USER e INSTAGRAM_PASS no Railway para acessar conteúdo que exige login."
             elif "not available" in stderr.lower():
                 hint = "\n\nDica: Verifique se a URL está correta e se o conteúdo ainda está disponível."
             else:
                 hint = ""
-            raise HTTPException(400, f"Não foi possível baixar o conteúdo. Verifique o link.\n\n{stderr}{hint}")
+            raise HTTPException(400, f"Não foi possível baixar o conteúdo.\n\n{stderr}{hint}")
 
-        # Encontra qualquer mídia baixada
         media_files = (
             list(out_dir.glob("*.mp4")) + list(out_dir.glob("*.mkv")) +
             list(out_dir.glob("*.webm")) + list(out_dir.glob("*.jpg")) +
             list(out_dir.glob("*.jpeg")) + list(out_dir.glob("*.png")) +
             list(out_dir.glob("*.mp3")) + list(out_dir.glob("*.wav"))
         )
-        # Remove cookies.txt da lista
         media_files = [f for f in media_files if f.name != "cookies.txt"]
 
         if not media_files:
@@ -624,17 +729,7 @@ def instagram_extract(body: InstagramURL):
 
         media_path = str(media_files[0])
         ext = media_files[0].suffix.lower()
-
-        # Detecta tipo
-        if ext in (".mp4", ".mkv", ".webm"):
-            media_type = "video"
-        elif ext in (".mp3", ".wav"):
-            media_type = "audio"
-        else:
-            media_type = "image"
-
-        # Para imagens/carrosséis: o yt-dlp baixa uma imagem. Extraímos o texto via Gemini Vision depois.
-        # Para carrosséis: yt-dlp pode baixar múltiplas imagens — pegamos a primeira e avisamos.
+        media_type = "video" if ext in (".mp4", ".mkv", ".webm") else ("audio" if ext in (".mp3", ".wav") else "image")
 
         jobs[job_id] = {
             "status": "uploaded", "step": 0,

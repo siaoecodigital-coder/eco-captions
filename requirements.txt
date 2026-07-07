@@ -4,3 +4,4 @@ python-multipart
 python-dotenv
 google-genai
 yt-dlp
+instaloader
