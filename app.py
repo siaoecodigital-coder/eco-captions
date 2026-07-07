@@ -673,11 +673,19 @@ Com base na transcrição abaixo de um vídeo, crie uma legenda humanizada, vend
 7. Use emojis com moderação, combinando com o nicho.
 8. NÃO invente informações que não estejam na transcrição.
 
+**Limites de tamanho (OBRIGATÓRIO):**
+- Máximo 4 parágrafos no total.
+- Máximo 2 frases por parágrafo.
+- Máximo 600 caracteres no total.
+- Cada parágrafo: no máximo 1-2 linhas (30-50 palavras por parágrafo).
+- Se houver muitos produtos no vídeo, cite no máximo 3. Seja conciso.
+- Corte adjetivos repetidos. Vá direto ao ponto.
+
 **Formato de saída:**
-- Primeiro parágrafo: chamada principal (1-2 frases curtas)
-- Segundo parágrafo: apresentação do produto/serviço
-- Terceiro parágrafo: benefícios e diferenciais
-- Quarto parágrafo: chamada para ação
+- Primeiro parágrafo: chamada principal (1-2 frases curtas, máx 30 palavras)
+- Segundo parágrafo: apresentação do produto/serviço (máx 50 palavras)
+- Terceiro parágrafo: benefícios e diferenciais (máx 50 palavras)
+- Quarto parágrafo: chamada para ação (1 frase, máx 25 palavras)
 
 Retorne APENAS a legenda pronta, sem títulos, sem markdown, sem aspas ao redor. Texto pronto para copiar e colar.
 
