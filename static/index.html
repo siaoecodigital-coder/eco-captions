@@ -137,12 +137,58 @@
     input:checked + .slider:before { transform: translateX(20px); background: #fff; }
     .tarja-opts { display: none; }
     .tarja-opts.visible { display: block; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; margin-bottom: 28px; border-bottom: 2px solid #1e1e35; }
+    .tab-btn {
+      flex: 1; padding: 13px 16px; border: none; background: transparent;
+      color: #666; font-size: 0.92rem; font-weight: 600; cursor: pointer;
+      transition: all 0.18s; border-bottom: 2px solid transparent; margin-bottom: -2px;
+      text-align: center;
+    }
+    .tab-btn:hover { color: #ccc; }
+    .tab-btn.active { color: #e94560; border-bottom-color: #e94560; }
+
+    /* Instagram URL input */
+    .url-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .url-input {
+      flex: 1; background: #1e1e35; border: 1px solid #2a2a45; border-radius: 10px;
+      color: #ddd; font-size: 0.9rem; padding: 13px 16px; outline: none;
+      font-family: inherit;
+    }
+    .url-input:focus { border-color: #e94560; }
+    .url-input::placeholder { color: #555; }
+
+    /* Caption result */
+    .caption-card { background: #161625; border-radius: 14px; padding: 24px; margin-bottom: 20px; border-left: 3px solid #22a855; }
+    .caption-card .section-title { color: #22a855; }
+    .caption-text {
+      background: #0f0f1a; border-radius: 10px; padding: 20px; color: #ddd;
+      font-size: 0.92rem; line-height: 1.8; white-space: pre-wrap;
+      margin-bottom: 16px; max-height: 500px; overflow-y: auto;
+    }
+    .divider { border: 0; border-top: 1px solid #1e1e35; margin: 28px 0; }
+
+    .spinner {
+      display: inline-block; width: 18px; height: 18px; border: 2px solid #2a2a45;
+      border-top-color: #e94560; border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 <div class="container">
   <h1>ECO Captions</h1>
-  <p class="subtitle">Suba o vídeo, corrija a transcrição se necessário e gere o vídeo com legendas.</p>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-legenda" onclick="switchTab('legenda')">🎬 Legenda no Vídeo</button>
+    <button class="tab-btn" id="tab-transcricao" onclick="switchTab('transcricao')">🤖 Transcrição IA</button>
+  </div>
+
+  <!-- ========== ABA 1: LEGENDA NO VÍDEO ========== -->
+  <div id="tab-content-legenda">
 
   <!-- Upload -->
   <div id="sec-upload">
@@ -351,6 +397,82 @@
       <button class="btn btn-ghost" onclick="renderAnother()">🔄 Outro estilo</button>
     </div>
   </div>
+
+  </div><!-- /tab-content-legenda -->
+
+  <!-- ========== ABA 2: TRANSCRIÇÃO IA ========== -->
+  <div id="tab-content-transcricao" class="hidden">
+
+    <div class="card">
+      <div class="section-title" style="margin-bottom:16px">📎 Link do Instagram ou Upload</div>
+
+      <div class="url-row">
+        <input class="url-input" id="reels-url" type="text" placeholder="Cole o link do Reels aqui...">
+        <button class="btn btn-reels" id="btn-extract" onclick="extractFromInstagram()">🔍 Extrair</button>
+      </div>
+
+      <hr class="divider">
+      <p style="color:#555;font-size:0.82rem;text-align:center;margin-bottom:12px">ou</p>
+
+      <div class="drop-zone" id="drop-zone-ia">
+        <div class="icon">📹</div>
+        <p><strong>Clique para selecionar</strong> ou arraste um vídeo aqui<br>MP4, MOV, AVI, MKV</p>
+        <input type="file" id="file-input-ia" accept="video/*">
+      </div>
+
+      <div class="file-pill hidden" id="file-pill-ia">
+        <span style="font-size:1.4rem">🎥</span>
+        <div>
+          <div class="name" id="pill-name-ia"></div>
+          <div class="size" id="pill-size-ia"></div>
+        </div>
+      </div>
+
+      <button class="btn btn-red btn-block" id="btn-process-ia" disabled onclick="startProcessIA()" style="margin-top:8px">
+        ▶ Processar Vídeo
+      </button>
+    </div>
+
+    <!-- Progress IA -->
+    <div class="card hidden" id="sec-progress-ia">
+      <div class="progress-label" id="prog-msg-ia">Iniciando...</div>
+      <div class="bar-bg"><div class="bar-fill" id="prog-bar-ia" style="width:0%"></div></div>
+    </div>
+
+    <!-- Error IA -->
+    <div class="error hidden" id="sec-error-ia"></div>
+
+    <!-- Transcript editor IA -->
+    <div id="sec-transcript-ia" class="hidden">
+      <div class="card">
+        <div class="section-title">✏️ Transcrição</div>
+        <div class="section-hint">Confira e corrija a transcrição antes de gerar a legenda.</div>
+        <textarea id="transcript-textarea" style="
+          width:100%; min-height:180px; background:#0f0f1a; border:1px solid #2a2a45;
+          border-radius:10px; color:#ddd; font-size:0.9rem; padding:16px; outline:none;
+          font-family:inherit; line-height:1.7; resize:vertical;
+        " placeholder="Transcrição aparecerá aqui..."></textarea>
+      </div>
+
+      <button class="btn btn-reels btn-block" id="btn-generate-caption" onclick="generateCaption()">
+        ✨ Gerar Legenda com IA
+      </button>
+    </div>
+
+    <!-- Caption result -->
+    <div id="sec-caption-result" class="hidden">
+      <div class="caption-card">
+        <div class="section-title" style="margin-bottom:12px">📝 Legenda Gerada</div>
+        <div class="caption-text" id="caption-text"></div>
+        <div class="row">
+          <button class="btn btn-green" onclick="copyCaption()">📋 Copiar Legenda</button>
+          <button class="btn btn-ghost" onclick="resetIA()">🔄 Novo Vídeo</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-content-transcricao -->
+
 </div>
 
 <script>
@@ -573,6 +695,220 @@
   }
   function escHtml(s) {
     return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ─── Tabs ───────────────────────────────────────────────────────────────
+
+  function switchTab(tab) {
+    const isLegenda = tab === 'legenda';
+    document.getElementById('tab-legenda').classList.toggle('active', isLegenda);
+    document.getElementById('tab-transcricao').classList.toggle('active', !isLegenda);
+    document.getElementById('tab-content-legenda').classList.toggle('hidden', !isLegenda);
+    document.getElementById('tab-content-transcricao').classList.toggle('hidden', isLegenda);
+  }
+
+  // ─── Aba Transcrição IA ──────────────────────────────────────────────────
+
+  let iaJobId = null;
+  let iaPoll = null;
+  let iaFile = null;
+  let iaSegments = [];
+  let iaTranscriptionText = '';
+
+  // Upload handlers
+  const dropIA = document.getElementById('drop-zone-ia');
+  const inputIA = document.getElementById('file-input-ia');
+
+  dropIA.addEventListener('click', () => inputIA.click());
+  dropIA.addEventListener('dragover', e => { e.preventDefault(); dropIA.classList.add('over'); });
+  dropIA.addEventListener('dragleave', () => dropIA.classList.remove('over'));
+  dropIA.addEventListener('drop', e => {
+    e.preventDefault(); dropIA.classList.remove('over');
+    if (e.dataTransfer.files[0]) setFileIA(e.dataTransfer.files[0]);
+  });
+  inputIA.addEventListener('change', e => { if (e.target.files[0]) setFileIA(e.target.files[0]); });
+
+  function setFileIA(f) {
+    iaFile = f;
+    document.getElementById('pill-name-ia').textContent = f.name;
+    document.getElementById('pill-size-ia').textContent = fmtSize(f.size);
+    document.getElementById('file-pill-ia').classList.remove('hidden');
+    document.getElementById('btn-process-ia').disabled = false;
+  }
+
+  async function extractFromInstagram() {
+    const url = document.getElementById('reels-url').value.trim();
+    if (!url) return;
+
+    const btn = document.getElementById('btn-extract');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Baixando...';
+    hide('sec-error-ia');
+
+    try {
+      const r = await fetch('/instagram-extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (!r.ok) {
+        const err = await r.json();
+        throw new Error(err.detail || 'Erro ao extrair vídeo');
+      }
+      const data = await r.json();
+      iaJobId = data.job_id;
+      document.getElementById('file-pill-ia').classList.remove('hidden');
+      document.getElementById('pill-name-ia').textContent = data.filename || 'Vídeo do Instagram';
+      document.getElementById('pill-size-ia').textContent = 'Pronto para processar';
+      document.getElementById('btn-process-ia').disabled = false;
+      btn.textContent = '✅ Pronto!';
+      btn.classList.remove('btn-reels');
+      btn.classList.add('btn-green');
+      setTimeout(() => { btn.textContent = '🔍 Extrair'; btn.classList.add('btn-reels'); btn.classList.remove('btn-green'); btn.disabled = false; }, 2500);
+    } catch (e) {
+      showErrorIA(e.message);
+      btn.disabled = false;
+      btn.textContent = '🔍 Extrair';
+    }
+  }
+
+  async function startProcessIA() {
+    if (!iaFile && !iaJobId) return;
+
+    const btn = document.getElementById('btn-process-ia');
+    btn.disabled = true;
+    hide('sec-error-ia');
+    hide('sec-transcript-ia');
+    hide('sec-caption-result');
+    show('sec-progress-ia');
+    setMsgIA('Enviando vídeo...', 5);
+
+    try {
+      // If upload (not Instagram), do upload first
+      if (iaFile) {
+        const fd = new FormData();
+        fd.append('file', iaFile);
+        const r = await fetch('/upload', { method: 'POST', body: fd });
+        if (!r.ok) throw new Error('Falha no upload');
+        iaJobId = (await r.json()).job_id;
+      }
+
+      setMsgIA('Processando...', 15);
+      await fetch(`/process/${iaJobId}`, { method: 'POST' });
+      iaPoll = setInterval(pollStatusIA, 2500);
+    } catch (e) {
+      showErrorIA(e.message);
+      btn.disabled = false;
+    }
+  }
+
+  async function pollStatusIA() {
+    try {
+      const r = await fetch(`/status/${iaJobId}`);
+      const d = await r.json();
+      setMsgIA(d.message, d.progress);
+
+      if (d.status === 'transcribed') {
+        clearInterval(iaPoll);
+        hide('sec-progress-ia');
+        await loadTranscriptIA();
+      } else if (d.status === 'error') {
+        clearInterval(iaPoll);
+        showErrorIA(d.message);
+      }
+    } catch (_) {}
+  }
+
+  async function loadTranscriptIA() {
+    const r = await fetch(`/transcript/${iaJobId}`);
+    const data = await r.json();
+    iaSegments = data.segments;
+    iaTranscriptionText = iaSegments.map(s => s.text).join('\n');
+    document.getElementById('transcript-textarea').value = iaTranscriptionText;
+    show('sec-transcript-ia');
+  }
+
+  async function generateCaption() {
+    const btn = document.getElementById('btn-generate-caption');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Gerando...';
+
+    // Update segments from textarea
+    const editedText = document.getElementById('transcript-textarea').value;
+    const lines = editedText.split('\n').filter(l => l.trim());
+    iaSegments = lines.map(text => ({ text }));
+
+    try {
+      const r = await fetch(`/caption-ia/${iaJobId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ segments: iaSegments })
+      });
+      if (!r.ok) {
+        const err = await r.json();
+        throw new Error(err.detail || 'Erro ao gerar legenda');
+      }
+      const data = await r.json();
+      document.getElementById('caption-text').textContent = data.caption;
+      hide('sec-transcript-ia');
+      show('sec-caption-result');
+    } catch (e) {
+      showErrorIA(e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '✨ Gerar Legenda com IA';
+    }
+  }
+
+  async function copyCaption() {
+    const text = document.getElementById('caption-text').textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    // Brief feedback
+    const btns = document.querySelectorAll('#sec-caption-result .btn-green');
+    btns.forEach(b => { b.textContent = '✅ Copiado!'; });
+    setTimeout(() => { btns.forEach(b => { b.textContent = '📋 Copiar Legenda'; }); }, 2000);
+  }
+
+  function resetIA() {
+    hide('sec-caption-result');
+    hide('sec-transcript-ia');
+    hide('sec-progress-ia');
+    hide('sec-error-ia');
+    if (iaPoll) clearInterval(iaPoll);
+    iaJobId = null;
+    iaFile = null;
+    iaSegments = [];
+    iaTranscriptionText = '';
+    document.getElementById('reels-url').value = '';
+    document.getElementById('file-pill-ia').classList.add('hidden');
+    document.getElementById('btn-process-ia').disabled = true;
+    document.getElementById('transcript-textarea').value = '';
+    document.getElementById('file-input-ia').value = '';
+    document.getElementById('btn-extract').disabled = false;
+    document.getElementById('btn-extract').textContent = '🔍 Extrair';
+  }
+
+  function setMsgIA(msg, pct) {
+    document.getElementById('prog-msg-ia').textContent = msg || '';
+    document.getElementById('prog-bar-ia').style.width = (pct || 0) + '%';
+  }
+
+  function showErrorIA(msg) {
+    hide('sec-progress-ia');
+    const el = document.getElementById('sec-error-ia');
+    el.textContent = '❌ ' + msg;
+    el.classList.remove('hidden');
+    document.getElementById('btn-process-ia').disabled = false;
   }
 </script>
 </body>

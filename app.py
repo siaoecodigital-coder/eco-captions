@@ -5,6 +5,10 @@ import subprocess
 import threading
 from pathlib import Path
 
+import re
+import sys
+import traceback
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -12,6 +16,8 @@ from pydantic import BaseModel
 from typing import Optional
 import uvicorn
 from dotenv import load_dotenv
+
+from google import genai
 
 load_dotenv()
 
@@ -85,9 +91,6 @@ def extract_audio(video_path: str, out_dir: Path) -> str:
 
 
 def transcribe_audio(audio_path: str) -> list:
-    from google import genai
-    import re, sys, traceback
-
     client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
 
     with open(audio_path, "rb") as f:
@@ -458,6 +461,129 @@ def download(job_id: str):
     return FileResponse(path, media_type="video/mp4", filename=f"eco-captions_{job_id}.mp4",
                         headers={"Cache-Control": "no-store"})
 
+
+# ─── Instagram Reels download ─────────────────────────────────────────────────
+
+class InstagramURL(BaseModel):
+    url: str
+
+
+def clean_instagram_url(url: str) -> str:
+    return re.sub(r"[?&]igsh=.*", "", url).rstrip("/")
+
+
+@app.post("/instagram-extract")
+def instagram_extract(body: InstagramURL):
+    """Baixa vídeo de Reels público via yt-dlp e cria um job."""
+    cleaned = clean_instagram_url(body.url)
+    job_id = str(uuid.uuid4())[:8]
+    out_dir = UPLOAD_DIR / job_id
+    out_dir.mkdir(parents=True)
+    output_template = str(out_dir / "%(title)s.%(ext)s")
+
+    try:
+        result = subprocess.run([
+            "yt-dlp",
+            "-f", "mp4[height<=1080]",
+            "-o", output_template,
+            "--merge-output-format", "mp4",
+            "--no-playlist",
+            "--socket-timeout", "30",
+            cleaned
+        ], capture_output=True, text=True, timeout=120)
+
+        if result.returncode != 0:
+            stderr = result.stderr[-800:]
+            raise HTTPException(400, f"Não foi possível baixar o vídeo. Verifique se o link é de um Reels público.\n\n{stderr}")
+
+        # Find downloaded file
+        videos = list(out_dir.glob("*.mp4")) + list(out_dir.glob("*.mkv")) + list(out_dir.glob("*.webm"))
+        if not videos:
+            raise HTTPException(400, "Download concluído mas arquivo não encontrado.")
+
+        video_path = str(videos[0])
+        jobs[job_id] = {
+            "status": "uploaded", "step": 0, "message": "Vídeo do Instagram baixado com sucesso",
+            "progress": 0, "video_path": video_path, "out_dir": str(out_dir),
+            "source": "instagram"
+        }
+        return {"job_id": job_id, "filename": videos[0].name}
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(408, "Timeout ao baixar o vídeo do Instagram.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao processar URL: {str(e)}")
+
+
+# ─── IA Caption generation ───────────────────────────────────────────────────
+
+CAPTION_PROMPT = """Você é um copywriter especializado em legendas para Instagram.
+
+Com base na transcrição abaixo de um vídeo, crie uma legenda humanizada, vendedora e natural para o Instagram, seguindo EXATAMENTE esta estrutura:
+
+**Regras obrigatórias:**
+1. Comece com uma frase de impacto chamando atenção para o produto, serviço ou oferta.
+2. Apresente o produto/serviço principal de forma simples e desejável.
+3. Destaque os principais benefícios (conforto, praticidade, qualidade, economia, beleza, exclusividade ou resultado).
+4. Se houver um segundo produto/serviço no vídeo, apresente como complemento ideal.
+5. Use linguagem leve, comercial e próxima do público.
+6. Finalize com uma chamada para ação (chamar no WhatsApp, visitar a loja, comentar ou garantir o produto).
+7. Use emojis com moderação, combinando com o nicho.
+8. NÃO invente informações que não estejam na transcrição.
+
+**Formato de saída:**
+- Primeiro parágrafo: chamada principal (1-2 frases curtas)
+- Segundo parágrafo: apresentação do produto/serviço
+- Terceiro parágrafo: benefícios e diferenciais
+- Quarto parágrafo: chamada para ação
+
+Retorne APENAS a legenda pronta, sem títulos, sem markdown, sem aspas ao redor. Texto pronto para copiar e colar.
+
+Transcrição do vídeo:
+{transcription}"""
+
+
+class CaptionRequest(BaseModel):
+    segments: list
+
+
+@app.post("/caption-ia/{job_id}")
+def generate_caption(job_id: str, body: CaptionRequest):
+    """Gera legenda humanizada com base nos segmentos transcritos."""
+    if job_id not in jobs:
+        raise HTTPException(404, "Job não encontrado")
+
+    # Concatena transcrição completa
+    full_text = " ".join(s.get("text", "") for s in body.segments if s.get("text", "").strip())
+    if not full_text.strip():
+        raise HTTPException(400, "Nenhum texto na transcrição para gerar legenda.")
+
+    try:
+        client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
+        prompt = CAPTION_PROMPT.format(transcription=full_text)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+        caption = response.text.strip()
+        # Remove possíveis ```markdown wrappers
+        caption = re.sub(r"^```(?:markdown)?\s*", "", caption)
+        caption = re.sub(r"\s*```$", "", caption)
+
+        return {
+            "caption": caption.strip(),
+            "transcription": full_text
+        }
+
+    except Exception as e:
+        print(f"ERRO CAPTION IA: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        raise HTTPException(500, f"Erro ao gerar legenda: {str(e)}")
+
+
+# ─── Main ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
