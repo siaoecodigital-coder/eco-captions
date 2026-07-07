@@ -407,7 +407,7 @@
       <div class="section-title" style="margin-bottom:16px">📎 Link do Instagram ou Upload</div>
 
       <div class="url-row">
-        <input class="url-input" id="reels-url" type="text" placeholder="Cole o link do Reels aqui...">
+        <input class="url-input" id="reels-url" type="text" placeholder="Cole o link do Instagram aqui (Reels, Stories, Posts/Carrosséis)...">
         <button class="btn btn-reels" id="btn-extract" onclick="extractFromInstagram()">🔍 Extrair</button>
       </div>
 
@@ -757,9 +757,11 @@
       }
       const data = await r.json();
       iaJobId = data.job_id;
+      const typeLabels = { video: '🎬 Vídeo', image: '🖼️ Imagem', audio: '🎵 Áudio' };
+      const typeLabel = typeLabels[data.media_type] || '📎 Mídia';
       document.getElementById('file-pill-ia').classList.remove('hidden');
-      document.getElementById('pill-name-ia').textContent = data.filename || 'Vídeo do Instagram';
-      document.getElementById('pill-size-ia').textContent = 'Pronto para processar';
+      document.getElementById('pill-name-ia').textContent = data.filename || 'Mídia do Instagram';
+      document.getElementById('pill-size-ia').textContent = `${typeLabel} — Pronto para processar`;
       document.getElementById('btn-process-ia').disabled = false;
       btn.textContent = '✅ Pronto!';
       btn.classList.remove('btn-reels');

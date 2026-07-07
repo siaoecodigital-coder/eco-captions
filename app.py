@@ -125,6 +125,48 @@ def transcribe_audio(audio_path: str) -> list:
         raise
 
 
+def transcribe_image(image_path: str) -> list:
+    """Transcreve uma imagem via Gemini Vision — descreve o conteúdo visível."""
+    client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
+
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
+
+    ext = Path(image_path).suffix.lower()
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
+
+    prompt = (
+        "Descreva detalhadamente esta imagem em português do Brasil. "
+        "Inclua: o que está sendo mostrado (produto, pessoa, local), textos visíveis, "
+        "cores predominantes, atmosfera, e qualquer oferta ou promoção escrita. "
+        "Se for um carrossel ou post de loja, descreva os produtos com seus preços se houver. "
+        "Retorne SOMENTE JSON válido, sem markdown, sem explicações:\n"
+        '{"segments":[{"start":0.0,"end":5.0,"text":"Descrição detalhada do que está na imagem..."}]}\n'
+        "Regras: cubra todos os detalhes visuais relevantes, seja específico sobre produtos, preços e marcas."
+    )
+    image_part = genai.types.Part.from_bytes(data=image_bytes, mime_type=mime)
+    text_part = genai.types.Part.from_text(text=prompt)
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[image_part, text_part],
+        )
+        text = response.text.strip()
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+
+        data = json.loads(text)
+        return [
+            {"index": i, "start": float(s["start"]), "end": float(s["end"]), "text": s["text"].strip()}
+            for i, s in enumerate(data.get("segments", []))
+        ]
+    except Exception as e:
+        print(f"ERRO IMAGE TRANSCRIÇÃO: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        raise
+
+
 def find_speech_intervals(segments: list, min_gap=0.5, padding=0.05) -> list:
     if not segments:
         return []
@@ -309,17 +351,47 @@ def render_video(cut_video: str, segments: list, out_dir: Path, options: dict) -
 def run_pipeline(job_id: str):
     job = jobs[job_id]
     out_dir = Path(job["out_dir"])
+    media_type = job.get("media_type", "video")
 
     def upd(step, msg, pct):
         jobs[job_id].update({"step": step, "message": msg, "progress": pct})
 
     try:
+        if media_type == "image":
+            # Imagem: Gemini Vision descreve, sem corte de silêncio (não é vídeo)
+            upd(1, "Analisando imagem com IA...", 30)
+            segments = transcribe_image(job["video_path"])
+
+            jobs[job_id].update({
+                "status": "transcribed",
+                "step": 4,
+                "message": "Análise da imagem concluída! Confira e gere a legenda.",
+                "progress": 100,
+                "cut_path": job["video_path"],  # imagem original
+                "segments": segments,
+            })
+            return
+
+        # Video/Audio: pipeline normal
         upd(1, "Extraindo áudio...", 15)
         audio = extract_audio(job["video_path"], out_dir)
 
         upd(2, "Transcrevendo com Gemini...", 35)
         segments = transcribe_audio(audio)
 
+        if media_type == "audio":
+            # Áudio puro: sem corte de silêncio
+            jobs[job_id].update({
+                "status": "transcribed",
+                "step": 4,
+                "message": "Áudio transcrito! Confira e gere a legenda.",
+                "progress": 100,
+                "cut_path": job["video_path"],
+                "segments": segments,
+            })
+            return
+
+        # Vídeo: corte de silêncios
         upd(3, "Cortando silêncios...", 65)
         intervals = find_speech_intervals(segments)
         cut_path = cut_silences(job["video_path"], intervals, out_dir)
@@ -341,6 +413,11 @@ def run_pipeline(job_id: str):
 def run_render(job_id: str, options: dict):
     job = jobs[job_id]
     out_dir = Path(job["out_dir"])
+
+    if job.get("media_type") in ("image", "audio"):
+        jobs[job_id].update({"status": "error", "message": "Renderização de vídeo indisponível para imagens/áudio. Use a aba Transcrição IA para gerar a legenda.", "progress": 0})
+        return
+
     try:
         jobs[job_id].update({"status": "rendering", "message": "Renderizando...", "progress": 50})
         final = render_video(job["cut_path"], job["segments"], out_dir, options)
@@ -462,55 +539,118 @@ def download(job_id: str):
                         headers={"Cache-Control": "no-store"})
 
 
-# ─── Instagram Reels download ─────────────────────────────────────────────────
+# ─── Instagram download ────────────────────────────────────────────────────────
 
-class InstagramURL(BaseModel):
-    url: str
+INSTAGRAM_COOKIES = os.getenv("INSTAGRAM_COOKIES", "").strip()
+
+SUPPORTED_INSTAGRAM_PATTERNS = [
+    r"/reel/",           # Reels
+    r"/stories?/",       # Stories (aceita /story/ e /stories/)
+    r"/p/",              # Posts (carrossel, imagem única, vídeo)
+]
+
+
+def is_instagram_supported(url: str) -> bool:
+    """Verifica se a URL é um tipo suportado do Instagram."""
+    return any(re.search(p, url, re.I) for p in SUPPORTED_INSTAGRAM_PATTERNS)
 
 
 def clean_instagram_url(url: str) -> str:
     return re.sub(r"[?&]igsh=.*", "", url).rstrip("/")
 
 
+class InstagramURL(BaseModel):
+    url: str
+
+
 @app.post("/instagram-extract")
 def instagram_extract(body: InstagramURL):
-    """Baixa vídeo de Reels público via yt-dlp e cria um job."""
+    """Baixa mídia do Instagram (Reels, Stories, Posts/Carrosséis) via yt-dlp."""
     cleaned = clean_instagram_url(body.url)
+
+    if not is_instagram_supported(cleaned):
+        raise HTTPException(400, "URL não suportada. Aceitamos Reels (/reel/), Stories (/stories/) e Posts/Carrosséis (/p/) públicos.")
+
     job_id = str(uuid.uuid4())[:8]
     out_dir = UPLOAD_DIR / job_id
     out_dir.mkdir(parents=True)
     output_template = str(out_dir / "%(title)s.%(ext)s")
 
+    cmd = [
+        "yt-dlp",
+        "-f", "best[height<=1080]/best",
+        "-o", output_template,
+        "--merge-output-format", "mp4",
+        "--no-playlist",
+        "--socket-timeout", "30",
+        "--extract-audio",  # fallback: extrai áudio se não puder baixar vídeo
+        "--audio-format", "mp3",
+    ]
+
+    # Injeta cookies se disponíveis (para burlar bloqueio do Instagram)
+    if INSTAGRAM_COOKIES:
+        cookie_file = out_dir / "cookies.txt"
+        cookie_file.write_text(INSTAGRAM_COOKIES, encoding="utf-8")
+        cmd.extend(["--cookies", str(cookie_file)])
+
+    cmd.append(cleaned)
+
     try:
-        result = subprocess.run([
-            "yt-dlp",
-            "-f", "mp4[height<=1080]",
-            "-o", output_template,
-            "--merge-output-format", "mp4",
-            "--no-playlist",
-            "--socket-timeout", "30",
-            cleaned
-        ], capture_output=True, text=True, timeout=120)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
         if result.returncode != 0:
             stderr = result.stderr[-800:]
-            raise HTTPException(400, f"Não foi possível baixar o vídeo. Verifique se o link é de um Reels público.\n\n{stderr}")
+            # Dá dicas mais específicas
+            if "empty media response" in stderr.lower() or "not granting access" in stderr.lower():
+                hint = "\n\nDica: Se este conteúdo exige login, configure a variável INSTAGRAM_COOKIES no Railway com os cookies do seu navegador."
+            elif "not available" in stderr.lower():
+                hint = "\n\nDica: Verifique se a URL está correta e se o conteúdo ainda está disponível."
+            else:
+                hint = ""
+            raise HTTPException(400, f"Não foi possível baixar o conteúdo. Verifique o link.\n\n{stderr}{hint}")
 
-        # Find downloaded file
-        videos = list(out_dir.glob("*.mp4")) + list(out_dir.glob("*.mkv")) + list(out_dir.glob("*.webm"))
-        if not videos:
-            raise HTTPException(400, "Download concluído mas arquivo não encontrado.")
+        # Encontra qualquer mídia baixada
+        media_files = (
+            list(out_dir.glob("*.mp4")) + list(out_dir.glob("*.mkv")) +
+            list(out_dir.glob("*.webm")) + list(out_dir.glob("*.jpg")) +
+            list(out_dir.glob("*.jpeg")) + list(out_dir.glob("*.png")) +
+            list(out_dir.glob("*.mp3")) + list(out_dir.glob("*.wav"))
+        )
+        # Remove cookies.txt da lista
+        media_files = [f for f in media_files if f.name != "cookies.txt"]
 
-        video_path = str(videos[0])
+        if not media_files:
+            raise HTTPException(400, "Download concluído mas nenhum arquivo de mídia encontrado.")
+
+        media_path = str(media_files[0])
+        ext = media_files[0].suffix.lower()
+
+        # Detecta tipo
+        if ext in (".mp4", ".mkv", ".webm"):
+            media_type = "video"
+        elif ext in (".mp3", ".wav"):
+            media_type = "audio"
+        else:
+            media_type = "image"
+
+        # Para imagens/carrosséis: o yt-dlp baixa uma imagem. Extraímos o texto via Gemini Vision depois.
+        # Para carrosséis: yt-dlp pode baixar múltiplas imagens — pegamos a primeira e avisamos.
+
         jobs[job_id] = {
-            "status": "uploaded", "step": 0, "message": "Vídeo do Instagram baixado com sucesso",
-            "progress": 0, "video_path": video_path, "out_dir": str(out_dir),
-            "source": "instagram"
+            "status": "uploaded", "step": 0,
+            "message": f"Mídia do Instagram baixada ({media_type})",
+            "progress": 0, "video_path": media_path, "out_dir": str(out_dir),
+            "source": "instagram", "media_type": media_type
         }
-        return {"job_id": job_id, "filename": videos[0].name}
+
+        return {
+            "job_id": job_id,
+            "filename": media_files[0].name,
+            "media_type": media_type
+        }
 
     except subprocess.TimeoutExpired:
-        raise HTTPException(408, "Timeout ao baixar o vídeo do Instagram.")
+        raise HTTPException(408, "Timeout ao baixar o conteúdo do Instagram.")
     except HTTPException:
         raise
     except Exception as e:
