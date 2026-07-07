@@ -39,13 +39,13 @@ SIZE_MAP = {
 POSITION_MAP = {
     "topo":   (8, 40),
     "centro": (5, 0),
-    "baixo":  (2, 80),
+    "baixo":  (2, 120),
 }
 
 TARJA_POSITION_MAP = {
     "topo":   (8, 20),
     "centro": (5, 0),
-    "baixo":  (2, 20),
+    "baixo":  (2, 80),
 }
 
 
