@@ -106,7 +106,7 @@ def transcribe_audio(audio_path: str) -> list:
         audio_part = genai.types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
         text_part = genai.types.Part.from_text(text=prompt)
         response = client.models.generate_content(
-            model="gemini-3.5-flash",
+            model="gemini-2.5-flash-latest",
             contents=[audio_part, text_part],
         )
 
@@ -149,7 +149,7 @@ def transcribe_image(image_path: str) -> list:
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-latest",
             contents=[image_part, text_part],
         )
         text = response.text.strip()
@@ -807,7 +807,7 @@ def generate_caption(job_id: str, body: CaptionRequest):
         client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
         prompt = CAPTION_PROMPT.format(transcription=full_text)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-latest",
             contents=prompt,
         )
         caption = response.text.strip()
