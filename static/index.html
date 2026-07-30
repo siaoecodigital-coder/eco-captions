@@ -184,7 +184,7 @@
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab-btn active" id="tab-legenda" onclick="switchTab('legenda')">🎬 Legenda no Vídeo</button>
-    <button class="tab-btn" id="tab-transcricao" onclick="switchTab('transcricao')">🤖 Transcrição IA</button>
+    <button class="tab-btn" id="tab-transcricao" onclick="switchTab('transcricao')">🤖 Copy do anúncio</button>
   </div>
 
   <!-- ========== ABA 1: LEGENDA NO VÍDEO ========== -->
@@ -707,7 +707,7 @@
     document.getElementById('tab-content-transcricao').classList.toggle('hidden', isLegenda);
   }
 
-  // ─── Aba Transcrição IA ──────────────────────────────────────────────────
+  // ─── Aba Copy do anúncio ──────────────────────────────────────────────────
 
   let iaJobId = null;
   let iaPoll = null;

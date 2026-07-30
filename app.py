@@ -415,7 +415,7 @@ def run_render(job_id: str, options: dict):
     out_dir = Path(job["out_dir"])
 
     if job.get("media_type") in ("image", "audio"):
-        jobs[job_id].update({"status": "error", "message": "Renderização de vídeo indisponível para imagens/áudio. Use a aba Transcrição IA para gerar a legenda.", "progress": 0})
+        jobs[job_id].update({"status": "error", "message": "Renderização de vídeo indisponível para imagens/áudio. Use a aba Copy do anúncio para gerar a legenda.", "progress": 0})
         return
 
     try:
