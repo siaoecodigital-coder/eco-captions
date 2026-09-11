@@ -9,7 +9,7 @@ import re
 import sys
 import traceback
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -20,6 +20,23 @@ from dotenv import load_dotenv
 from google import genai
 
 load_dotenv()
+
+# ─── Autenticação por chave API ────────────────────────────────────────────────
+# Protege os endpoints de API/IA. A variável API_KEY (Railway) define a chave única.
+# Se API_KEY estiver vazia, o app permanece aberto (compatibilidade com deploy atual).
+API_KEY = os.getenv("API_KEY", "").strip()
+
+
+def require_api_key(x_api_key: Optional[str] = Header(None),
+                    authorization: Optional[str] = Header(None)) -> None:
+    if not API_KEY:
+        return
+    provided = x_api_key or ""
+    if not provided and authorization and authorization.lower().startswith("bearer "):
+        provided = authorization[7:].strip()
+    if provided != API_KEY:
+        raise HTTPException(401, "Unauthorized: chave API inválida ou ausente. Envie no header X-API-Key.")
+
 
 BASE_DIR = Path(__file__).parent
 UPLOAD_DIR = BASE_DIR / "uploads"
@@ -437,7 +454,7 @@ def root():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
-@app.post("/upload")
+@app.post("/upload", dependencies=[Depends(require_api_key)])
 async def upload(file: UploadFile = File(...)):
     job_id = str(uuid.uuid4())[:8]
     out_dir = UPLOAD_DIR / job_id
@@ -452,7 +469,7 @@ async def upload(file: UploadFile = File(...)):
     return {"job_id": job_id}
 
 
-@app.post("/process/{job_id}")
+@app.post("/process/{job_id}", dependencies=[Depends(require_api_key)])
 def process(job_id: str):
     if job_id not in jobs:
         raise HTTPException(404, "Job não encontrado")
@@ -485,7 +502,7 @@ class TranscriptUpdate(BaseModel):
     segments: list
 
 
-@app.put("/transcript/{job_id}")
+@app.put("/transcript/{job_id}", dependencies=[Depends(require_api_key)])
 def update_transcript(job_id: str, body: TranscriptUpdate):
     if job_id not in jobs:
         raise HTTPException(404)
@@ -508,7 +525,7 @@ class RenderRequest(BaseModel):
     tarja_position: Optional[str] = "topo"
 
 
-@app.post("/render/{job_id}")
+@app.post("/render/{job_id}", dependencies=[Depends(require_api_key)])
 async def render(job_id: str, request: Request):
     if job_id not in jobs:
         raise HTTPException(404, "Job não encontrado")
@@ -644,7 +661,7 @@ class InstagramURL(BaseModel):
     url: str
 
 
-@app.post("/instagram-extract")
+@app.post("/instagram-extract", dependencies=[Depends(require_api_key)])
 def instagram_extract(body: InstagramURL):
     """Baixa mídia do Instagram (Reels, Stories, Posts/Carrosséis)."""
     cleaned = clean_instagram_url(body.url)
@@ -792,7 +809,7 @@ class CaptionRequest(BaseModel):
     segments: list
 
 
-@app.post("/caption-ia/{job_id}")
+@app.post("/caption-ia/{job_id}", dependencies=[Depends(require_api_key)])
 def generate_caption(job_id: str, body: CaptionRequest):
     """Gera legenda humanizada com base nos segmentos transcritos."""
     if job_id not in jobs:
