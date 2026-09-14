@@ -454,7 +454,7 @@ def root():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
-@app.post("/upload", dependencies=[Depends(require_api_key)])
+@app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     job_id = str(uuid.uuid4())[:8]
     out_dir = UPLOAD_DIR / job_id
@@ -469,7 +469,7 @@ async def upload(file: UploadFile = File(...)):
     return {"job_id": job_id}
 
 
-@app.post("/process/{job_id}", dependencies=[Depends(require_api_key)])
+@app.post("/process/{job_id}")
 def process(job_id: str):
     if job_id not in jobs:
         raise HTTPException(404, "Job não encontrado")
@@ -525,7 +525,7 @@ class RenderRequest(BaseModel):
     tarja_position: Optional[str] = "topo"
 
 
-@app.post("/render/{job_id}", dependencies=[Depends(require_api_key)])
+@app.post("/render/{job_id}")
 async def render(job_id: str, request: Request):
     if job_id not in jobs:
         raise HTTPException(404, "Job não encontrado")
@@ -661,7 +661,7 @@ class InstagramURL(BaseModel):
     url: str
 
 
-@app.post("/instagram-extract", dependencies=[Depends(require_api_key)])
+@app.post("/instagram-extract")
 def instagram_extract(body: InstagramURL):
     """Baixa mídia do Instagram (Reels, Stories, Posts/Carrosséis)."""
     cleaned = clean_instagram_url(body.url)
@@ -809,7 +809,7 @@ class CaptionRequest(BaseModel):
     segments: list
 
 
-@app.post("/caption-ia/{job_id}", dependencies=[Depends(require_api_key)])
+@app.post("/caption-ia/{job_id}")
 def generate_caption(job_id: str, body: CaptionRequest):
     """Gera legenda humanizada com base nos segmentos transcritos."""
     if job_id not in jobs:
